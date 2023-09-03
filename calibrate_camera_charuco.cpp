@@ -13,8 +13,8 @@
 using namespace std;
 using namespace cv;
 
-const double FRAME_WIDTH = 1280.0f;
-const double FRAME_HEIGHT = 720.0f;
+const double FRAME_WIDTH = 800.0f;
+const double FRAME_HEIGHT = 600.0f;
 
 namespace {
 const char* about =
@@ -173,7 +173,7 @@ int main(int argc, char *argv[]) {
             aruco::drawDetectedCornersCharuco(imageCopy, currentCharucoCorners, currentCharucoIds);
         }
 
-        putText(imageCopy, "Press 'c' to add current frame. 'ESC' to finish and calibrate",
+        putText(imageCopy, "Press 'Space' to add current frame. 'ESC' to finish and calibrate",
                 Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 240), 1);
 
         putText(imageCopy, "Frame size = " + to_string(frameWidth) + " x " + to_string(frameHeight),
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        if(key == 'c' && currentCharucoCorners.total() > 3) {
+        if(key == ' ' && currentCharucoCorners.total() > 3) {
             // Match image points
             board.matchImagePoints(currentCharucoCorners, currentCharucoIds, currentObjectPoints, currentImagePoints);
 
