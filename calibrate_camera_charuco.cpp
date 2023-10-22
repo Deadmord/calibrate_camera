@@ -35,6 +35,7 @@ const char* keys  =
         "{@outfile |<none> | Output file with calibrated camera parameters }"
         "{v        |       | Input from video file, if ommited, input comes from camera }"
         "{ci       | 0     | Camera id if input doesnt come from video (-v) }"
+        "{dr       |       | Directory with images files instead of video }"
         "{dp       |       | File of marker detector parameters }"
         "{rs       | false | Apply refind strategy }"
         "{zt       | false | Assume zero tangential distortion }"
@@ -43,6 +44,13 @@ const char* keys  =
         "{sc       | false | Show detected chessboard corners after calibration }";
 }
 
+enum srcType
+{
+    None = 0,
+    Camera,
+    Video,
+    Images
+};
 
 int main(int argc, char *argv[]) {
     CommandLineParser parser(argc, argv, keys);
@@ -80,12 +88,41 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    bool refindStrategy = parser.get<bool>("rs");
-    int camId = parser.get<int>("ci");
-    String video;
+    srcType source{None};
+    VideoCapture inputVideo;
+    vector<Mat> srcImages;
+    int waitTime;
 
+    if (parser.has("ci")) {
+        int camId = parser.get<int>("ci");
+        source = Camera;
+
+        waitTime = 10;
+        inputVideo.open(camId);
+        
+    }
     if(parser.has("v")) {
-        video = parser.get<String>("v");
+        String video = parser.get<String>("v");
+        source = Video;
+
+        waitTime = 0;
+        inputVideo.open(video);
+        
+    }
+    if (parser.has("dr")) {
+        String imagesDir = parser.get<String>("dr");
+        source = Images;
+
+        waitTime = 0;
+        srcImages = loadImages(imagesDir);
+        if (srcImages.empty()) {
+            cerr << "Images not found in the directory" << endl;
+            return 0;
+        }
+    }
+    if (source == None) {
+        cerr << "Source video or images was not defined" << endl;
+        return 0;
     }
 
     if(!parser.check()) {
@@ -93,24 +130,28 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    VideoCapture inputVideo;
-    int waitTime;
-    if(!video.empty()) {
-        inputVideo.open(video);
-        waitTime = 0;
-    } else {
-        inputVideo.open(camId);
-        waitTime = 10;
+    int frameWidth{0};
+    int frameHeight{0};
+
+    if (source == Camera) {
+        inputVideo.set(cv::CAP_PROP_FRAME_WIDTH, FRAME_WIDTH);
+        inputVideo.set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT);
+
+        frameWidth = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_WIDTH));
+        frameHeight = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_HEIGHT));
     }
-
-    inputVideo.set(cv::CAP_PROP_FRAME_WIDTH, FRAME_WIDTH);
-    inputVideo.set(cv::CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT);
-
-    auto frameWidth = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_WIDTH));
-    auto frameHeight = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_HEIGHT));
+    if (source == Video) {
+        frameWidth = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_WIDTH));
+        frameHeight = static_cast<int>(inputVideo.get(cv::CAP_PROP_FRAME_HEIGHT));
+    }
+    if (source == Images) {
+        frameWidth = static_cast<int>(srcImages[0].size().width);
+        frameHeight = static_cast<int>(srcImages[0].size().height);
+    }
 
     cout << "Frame size = " << frameWidth << " x " << frameHeight << endl;
 
+    bool refindStrategy = parser.get<bool>("rs");
     aruco::Dictionary dictionary = aruco::getPredefinedDictionary(0);
     if (parser.has("d")) {
         int dictionaryId = parser.get<int>("d");
@@ -148,10 +189,24 @@ int main(int argc, char *argv[]) {
 
     vector<Mat> allImages;
     Size imageSize;
+    bool m_running = true;
 
-    while(inputVideo.grab()) {
+    while(m_running) {
         Mat image, imageCopy;
-        inputVideo.retrieve(image);
+        if (source == Camera || source == Video)
+        {
+            m_running = inputVideo.read(image);
+        }
+        if (source == Images)
+        {
+            image = srcImages.front();
+            srcImages.erase(srcImages.begin()); // erase first value from our source;
+            m_running = !srcImages.empty();
+
+            frameWidth = static_cast<int>(image.size().width);
+            frameHeight = static_cast<int>(image.size().height);
+        }
+        if (!m_running) break;
 
         vector<int> markerIds;
         vector<vector<Point2f>> markerCorners, rejectedMarkers;
@@ -174,7 +229,7 @@ int main(int argc, char *argv[]) {
         }
 
         putText(imageCopy, "Press 'Space' to add current frame. 'ESC' to finish and calibrate",
-                Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 240), 1);
+            Point(10, 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 240), 1);
 
         putText(imageCopy, "Frame size = " + to_string(frameWidth) + " x " + to_string(frameHeight),
             Point(10, 40), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 240, 0), 1);
@@ -188,7 +243,7 @@ int main(int argc, char *argv[]) {
             break;
         }
 
-        if(key == ' ' && currentCharucoCorners.total() > 3) {
+        if((source == Images || key == ' ') && currentCharucoCorners.total() > 3) {
             // Match image points
             board.matchImagePoints(currentCharucoCorners, currentCharucoIds, currentObjectPoints, currentImagePoints);
 

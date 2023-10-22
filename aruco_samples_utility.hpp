@@ -1,6 +1,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/objdetect/aruco_detector.hpp>
 #include <opencv2/calib3d.hpp>
+#include <filesystem>
 #include <ctime>
 
 namespace {
@@ -43,6 +44,19 @@ inline static bool saveCameraParams(const std::string &filename, cv::Size imageS
     fs << "distortion_coefficients" << distCoeffs;
     fs << "avg_reprojection_error" << totalAvgErr;
     return true;
+}
+
+inline static std::vector<cv::Mat> loadImages(const std::string& path) {
+    std::vector<cv::Mat> images;
+    std::vector<std::string> filenames;
+    cv::glob(path, filenames, false);
+    for (const auto& filename : filenames) {
+        cv::Mat img = cv::imread(filename);
+        if (!img.empty()) {
+            images.push_back(img);
+        }
+    }
+    return images;
 }
 
 }
